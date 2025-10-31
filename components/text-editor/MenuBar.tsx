@@ -33,6 +33,9 @@ import {
   RemoveFormatting,
   ZoomIn,
   ZoomOut,
+  // Added icons for clear color pickers in UI/UX enhancement
+  Palette,
+  Highlighter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -47,6 +50,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -67,6 +71,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
+// --- Enhanced Component: ToolbarButton (Retaining all original props and logic) ---
 const ToolbarButton = ({
   icon: Icon,
   onClick,
@@ -81,20 +86,23 @@ const ToolbarButton = ({
   tooltip: string;
 }) => (
   <TooltipProvider>
-    <Tooltip>
+    <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
         <Button
-          variant={isActive ? "default" : "ghost"}
+          variant="ghost" // Use ghost for modern, cleaner look
           size="icon"
           onClick={onClick}
           disabled={disabled}
-          className="h-8 w-8"
+          className={`h-8 w-8 transition-colors ${
+            // **UI/UX Enhancement: Use a distinct color for the active state**
+            isActive
+              ? "bg-blue-500 text-white hover:bg-blue-600"
+              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          }`}
           aria-label={tooltip}
           aria-pressed={isActive}
         >
-          <Icon
-            className={isActive ? "h-4 w-4" : "h-4 w-4 text-muted-foreground"}
-          />
+          <Icon className="h-4 w-4" />
         </Button>
       </TooltipTrigger>
       <TooltipContent>
@@ -104,11 +112,59 @@ const ToolbarButton = ({
   </TooltipProvider>
 );
 
+// --- Enhanced Component: Group (Improved visual separation) ---
 const Group = ({ children }: { children: React.ReactNode }) => (
-  <div className="flex items-center gap-1 rounded-lg border border-border/50 bg-muted/30 px-1.5 py-1">
+  <div className="flex items-center gap-0.5 rounded-md border border-border/70 bg-background/50 p-0.5 shadow-sm">
     {children}
   </div>
 );
+
+// --- New Component: ColorPickerButton (Better UI for Color Inputs) ---
+const ColorPickerButton = ({
+  icon: Icon,
+  value,
+  onChange,
+  tooltip,
+}: {
+  icon: LucideIcon;
+  value: string;
+  onChange: (color: string) => void;
+  tooltip: string;
+}) => {
+  return (
+    <TooltipProvider>
+      <Tooltip delayDuration={300}>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative h-8 w-8 overflow-hidden p-0"
+            aria-label={tooltip}
+          >
+            {/* Display the icon above the hidden color input, colored by the value */}
+            <Icon className="h-4 w-4 absolute z-10 top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" style={{ color: value }} />
+            <input
+              type="color"
+              value={value}
+              onChange={(e) => onChange(e.target.value)}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+              title={tooltip}
+            />
+             {/* Small visual band at the bottom */}
+            <div
+              className="absolute bottom-0 left-0 h-[2px] w-full"
+              style={{ backgroundColor: value }}
+            ></div>
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{tooltip}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
 
 interface MenuBarProps {
   editor: Editor | null;
@@ -142,21 +198,20 @@ export function MenuBar({
   const [tableCols, setTableCols] = useState(3);
   const [textColor, setTextColor] = useState("#000000");
   const [highlightColor, setHighlightColor] = useState("#ffff00");
+  const [activeHeading, setActiveHeading] = useState("paragraph");
+  const [activeFontSize, setActiveFontSize] = useState("16px");
 
   // Sync color values with editor state
   useEffect(() => {
     if (!editor) return;
 
     const updateColors = () => {
-      const textStyleColor = editor.getAttributes("textStyle").color;
-      const highlightColor = editor.getAttributes("highlight").color;
+      const textStyleColor = editor.getAttributes("textStyle").color || "#000000";
+      const highlightMark = editor.getAttributes("highlight");
+      const currentHighlightColor = highlightMark.color || "#ffff00";
 
-      if (textStyleColor) {
-        setTextColor(textStyleColor);
-      }
-      if (highlightColor) {
-        setHighlightColor(highlightColor);
-      }
+      setTextColor(textStyleColor);
+      setHighlightColor(currentHighlightColor);
     };
 
     editor.on("selectionUpdate", updateColors);
@@ -168,6 +223,41 @@ export function MenuBar({
     };
   }, [editor]);
 
+  // Sync heading and font size
+  useEffect(() => {
+    if (!editor) return;
+
+    const updateSelects = () => {
+      const heading = editor.isActive("heading", { level: 1 })
+        ? "h1"
+        : editor.isActive("heading", { level: 2 })
+        ? "h2"
+        : editor.isActive("heading", { level: 3 })
+        ? "h3"
+        : editor.isActive("heading", { level: 4 })
+        ? "h4"
+        : editor.isActive("heading", { level: 5 })
+        ? "h5"
+        : editor.isActive("heading", { level: 6 })
+        ? "h6"
+        : "paragraph";
+
+      const fontSize = editor.getAttributes("textStyle").fontSize || "16px";
+
+      setActiveHeading(heading);
+      setActiveFontSize(fontSize);
+    };
+
+    updateSelects();
+    editor.on("selectionUpdate", updateSelects);
+    editor.on("transaction", updateSelects);
+
+    return () => {
+      editor.off("selectionUpdate", updateSelects);
+      editor.off("transaction", updateSelects);
+    };
+  }, [editor]);
+
   if (!editor) {
     return null;
   }
@@ -176,6 +266,7 @@ export function MenuBar({
     if (linkUrl) {
       const selection = editor.state.selection;
       const hasSelection = !selection.empty;
+      // Original logic restored: insert text as link if no selection
       if (hasSelection) {
         editor.chain().focus().setLink({ href: linkUrl }).run();
       } else {
@@ -190,7 +281,7 @@ export function MenuBar({
           .run();
       }
     } else {
-      // Remove link if URL is empty
+      // Original logic restored: Remove link if URL is empty
       editor.chain().focus().unsetLink().run();
     }
     setLinkDialogOpen(false);
@@ -201,13 +292,15 @@ export function MenuBar({
     const existingLink = editor.getAttributes("link");
     if (existingLink.href) {
       setLinkUrl(existingLink.href);
+    } else {
+      setLinkUrl(""); // Ensure it's clear if inserting new link
     }
     setLinkDialogOpen(true);
   };
 
   const handleInsertImage = () => {
     if (imageUrl) {
-      // Basic URL validation
+      // Original logic for basic URL validation
       try {
         new URL(imageUrl);
         editor.chain().focus().setImage({ src: imageUrl }).run();
@@ -223,12 +316,11 @@ export function MenuBar({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Check file type
+      // Original validation logic
       if (!file.type.startsWith("image/")) {
         alert("Please select an image file.");
         return;
       }
-      // Check file size (max 10MB)
       if (file.size > 10 * 1024 * 1024) {
         alert("Image size must be less than 10MB.");
         return;
@@ -261,16 +353,36 @@ export function MenuBar({
       onImportWord(file);
     }
   };
+  
+  const handleTextColorChange = (color: string) => {
+    setTextColor(color);
+    editor.chain().focus().setColor(color).run();
+  };
+
+  const handleHighlightColorChange = (color: string) => {
+    setHighlightColor(color);
+    if (editor.isActive("highlight")) {
+      editor.chain().focus().setHighlight({ color }).run();
+    } else {
+      editor.chain().focus().toggleHighlight({ color }).run();
+    }
+  };
+
 
   return (
-    <div className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 shadow-sm">
+    // UI/UX Enhancement: Sticky header with shadow for better visual hierarchy
+    <div className="sticky top-0 z-50 border-b bg-background/95 backdrop-blur supports-backdrop-filter:bg-background/60 shadow-lg">
       <div className="mx-auto max-w-5xl px-3">
+        {/* UI/UX Enhancement: Added overflow-x-auto for responsiveness */}
         <div className="flex items-center justify-between gap-2 overflow-x-auto py-2">
           <div className="flex flex-wrap items-center gap-2">
+            
+            {/* File Actions Group */}
             <Group>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline" size="sm" className="h-8">
+                  {/* UI/UX Enhancement: Use a friendly color for Export */}
+                  <Button variant="outline" size="sm" className="h-8 min-w-[90px] text-sm text-indigo-600 hover:text-indigo-700 border-indigo-300">
                     <FileDown className="h-4 w-4 mr-2" />
                     Export
                   </Button>
@@ -286,7 +398,8 @@ export function MenuBar({
               </DropdownMenu>
 
               <label htmlFor="import-file">
-                <Button variant="outline" size="sm" className="h-8" asChild>
+                {/* UI/UX Enhancement: Use a friendly color for Import */}
+                <Button variant="outline" size="sm" className="h-8 min-w-[90px] text-sm text-green-600 hover:text-green-700 border-green-300" asChild>
                   <span>
                     <FileUp className="h-4 w-4 mr-2" />
                     Import
@@ -301,7 +414,8 @@ export function MenuBar({
                 onChange={handleImport}
               />
             </Group>
-
+            
+            {/* Undo/Redo Group */}
             <Group>
               <ToolbarButton
                 icon={Undo}
@@ -317,23 +431,10 @@ export function MenuBar({
               />
             </Group>
 
+            {/* Style/Size Group */}
             <Group>
               <Select
-                value={
-                  editor.isActive("heading", { level: 1 })
-                    ? "h1"
-                    : editor.isActive("heading", { level: 2 })
-                    ? "h2"
-                    : editor.isActive("heading", { level: 3 })
-                    ? "h3"
-                    : editor.isActive("heading", { level: 4 })
-                    ? "h4"
-                    : editor.isActive("heading", { level: 5 })
-                    ? "h5"
-                    : editor.isActive("heading", { level: 6 })
-                    ? "h6"
-                    : "paragraph"
-                }
+                value={activeHeading}
                 onValueChange={(value) => {
                   if (value === "paragraph") {
                     editor.chain().focus().setParagraph().run();
@@ -347,9 +448,10 @@ export function MenuBar({
                       | 6;
                     editor.chain().focus().toggleHeading({ level }).run();
                   }
+                  setActiveHeading(value);
                 }}
               >
-                <SelectTrigger className="h-8 w-[120px] text-sm">
+                <SelectTrigger className="h-8 w-[120px] text-sm bg-background">
                   <SelectValue placeholder="Style" />
                 </SelectTrigger>
                 <SelectContent>
@@ -364,26 +466,26 @@ export function MenuBar({
               </Select>
 
               <Select
-                value={editor.getAttributes("textStyle").fontSize || "16px"}
+                value={activeFontSize}
                 onValueChange={(value) => {
                   editor.chain().focus().setFontSize(value).run();
+                  setActiveFontSize(value);
                 }}
               >
-                <SelectTrigger className="h-8 w-[80px] text-sm">
+                <SelectTrigger className="h-8 w-[80px] text-sm bg-background">
                   <SelectValue placeholder="Size" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="12px">12</SelectItem>
-                  <SelectItem value="14px">14</SelectItem>
-                  <SelectItem value="16px">16</SelectItem>
-                  <SelectItem value="18px">18</SelectItem>
-                  <SelectItem value="20px">20</SelectItem>
-                  <SelectItem value="24px">24</SelectItem>
-                  <SelectItem value="32px">32</SelectItem>
+                  {["12px", "14px", "16px", "18px", "20px", "24px", "32px"].map((size) => (
+                      <SelectItem key={size} value={size}>
+                          {size.replace('px', '')}
+                      </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Group>
 
+            {/* Basic Formatting Group */}
             <Group>
               <ToolbarButton
                 icon={Bold}
@@ -411,6 +513,7 @@ export function MenuBar({
               />
             </Group>
 
+            {/* Subscript, Superscript, Color & Clear Formatting Group */}
             <Group>
               <ToolbarButton
                 icon={Subscript}
@@ -424,34 +527,20 @@ export function MenuBar({
                 isActive={editor.isActive("superscript")}
                 tooltip="Superscript"
               />
-              <input
-                type="color"
-                onInput={(e) => {
-                  const color = (e.target as HTMLInputElement).value;
-                  setTextColor(color);
-                  editor.chain().focus().setColor(color).run();
-                }}
+              {/* Replaced original color inputs with new ColorPickerButton for better UI */}
+              <ColorPickerButton
+                icon={Palette}
                 value={textColor}
-                className="h-8 w-8 rounded cursor-pointer border border-border"
-                title="Text Color"
-                aria-label="Text Color"
+                onChange={handleTextColorChange}
+                tooltip="Text Color"
               />
-              <input
-                type="color"
-                onInput={(e) => {
-                  const color = (e.target as HTMLInputElement).value;
-                  setHighlightColor(color);
-                  if (editor.isActive("highlight")) {
-                    editor.chain().focus().setHighlight({ color }).run();
-                  } else {
-                    editor.chain().focus().toggleHighlight({ color }).run();
-                  }
-                }}
+              <ColorPickerButton
+                icon={Highlighter}
                 value={highlightColor}
-                className="h-8 w-8 rounded cursor-pointer border border-border"
-                title="Background Color"
-                aria-label="Background Color"
+                onChange={handleHighlightColorChange}
+                tooltip="Highlight/Background Color"
               />
+              
               <ToolbarButton
                 icon={RemoveFormatting}
                 onClick={() =>
@@ -461,6 +550,7 @@ export function MenuBar({
               />
             </Group>
 
+            {/* Alignment Group */}
             <Group>
               <ToolbarButton
                 icon={AlignLeft}
@@ -496,6 +586,7 @@ export function MenuBar({
               />
             </Group>
 
+            {/* List and Block Group */}
             <Group>
               <ToolbarButton
                 icon={List}
@@ -528,6 +619,7 @@ export function MenuBar({
               />
             </Group>
 
+            {/* Insert Media Group */}
             <Group>
               <ToolbarButton
                 icon={LinkIcon}
@@ -548,7 +640,8 @@ export function MenuBar({
             </Group>
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
+          {/* Right Side Utilities */}
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
             {onZoomChange ? (
               <Group>
                 <ToolbarButton
@@ -560,7 +653,7 @@ export function MenuBar({
                   }
                   tooltip="Zoom Out"
                 />
-                <div className="px-2 text-xs tabular-nums text-muted-foreground w-[50px] text-center">
+                <div className="px-2 text-xs tabular-nums text-foreground/80 w-[50px] text-center font-medium">
                   {Math.round((zoom || 1) * 100)}%
                 </div>
                 <ToolbarButton
@@ -586,10 +679,11 @@ export function MenuBar({
                 onClick={onToggleTheme}
                 tooltip={isDarkMode ? "Light Mode" : "Dark Mode"}
               />
+              {/* UI/UX Enhancement: Highlight destructive action in red */}
               <Button
-                variant="outline"
+                variant="default"
+                className="bg-red-500 hover:bg-red-600 text-white h-8 ml-1"
                 size="sm"
-                className="h-8"
                 onClick={() => {
                   if (confirm("Clear all content?")) {
                     editor.chain().focus().clearContent().run();
@@ -604,76 +698,94 @@ export function MenuBar({
         </div>
       </div>
 
+      {/* Table Controls (Original functionality, enhanced colors) */}
       {editor.isActive("table") && (
-        <div className="flex items-center gap-1 p-2 border-t bg-muted/50">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().addRowBefore().run()}
-          >
-            Row Before
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().addRowAfter().run()}
-          >
-            Row After
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().deleteRow().run()}
-          >
-            Delete Row
-          </Button>
+        <div className="flex flex-wrap items-center gap-1 p-2 border-t bg-muted/50 text-sm">
+          <span className="font-semibold text-foreground/80 mr-2">Table:</span>
+          <Group>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => editor.chain().focus().addRowBefore().run()}
+            >
+              Row Before
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => editor.chain().focus().addRowAfter().run()}
+            >
+              Row After
+            </Button>
+            <Button
+              variant="default"
+              className="bg-red-500 hover:bg-red-600 text-white h-7 text-xs"
+              size="sm"
+              onClick={() => editor.chain().focus().deleteRow().run()}
+            >
+              Delete Row
+            </Button>
+          </Group>
           <Separator orientation="vertical" className="h-6 mx-1" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().addColumnBefore().run()}
-          >
-            Col Before
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().addColumnAfter().run()}
-          >
-            Col After
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().deleteColumn().run()}
-          >
-            Delete Col
-          </Button>
+          <Group>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => editor.chain().focus().addColumnBefore().run()}
+            >
+              Col Before
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => editor.chain().focus().addColumnAfter().run()}
+            >
+              Col After
+            </Button>
+            <Button
+              variant="default"
+              className="bg-red-500 hover:bg-red-600 text-white h-7 text-xs"
+              size="sm"
+              onClick={() => editor.chain().focus().deleteColumn().run()}
+            >
+              Delete Col
+            </Button>
+          </Group>
           <Separator orientation="vertical" className="h-6 mx-1" />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().mergeCells().run()}
-          >
-            Merge Cells
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().splitCell().run()}
-          >
-            Split Cell
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => editor.chain().focus().deleteTable().run()}
-          >
-            Delete Table
-          </Button>
+          <Group>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => editor.chain().focus().mergeCells().run()}
+            >
+              Merge Cells
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              className="h-7 text-xs"
+              onClick={() => editor.chain().focus().splitCell().run()}
+            >
+              Split Cell
+            </Button>
+            <Button
+              variant="default"
+              className="bg-red-700 hover:bg-red-800 text-white h-7 text-xs"
+              size="sm"
+              onClick={() => editor.chain().focus().deleteTable().run()}
+            >
+              Delete Table
+            </Button>
+          </Group>
         </div>
       )}
 
+      {/* Dialogs (Original functionality, enhanced button colors) */}
       <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -699,22 +811,25 @@ export function MenuBar({
               />
             </div>
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setLinkDialogOpen(false);
-                setLinkUrl("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleSetLink}>
-              {editor.isActive("link") ? "Update" : "Insert"}
-            </Button>
+          <DialogFooter className="sm:justify-between">
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setLinkDialogOpen(false);
+                  setLinkUrl("");
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleSetLink} className="bg-blue-500 hover:bg-blue-600">
+                {editor.isActive("link") ? "Update" : "Insert"}
+              </Button>
+            </div>
             {editor.isActive("link") && (
               <Button
-                variant="destructive"
+                variant="default"
+                className="bg-red-500 hover:bg-red-600 text-white"
                 onClick={() => {
                   editor.chain().focus().unsetLink().run();
                   setLinkDialogOpen(false);
@@ -780,7 +895,9 @@ export function MenuBar({
             >
               Cancel
             </Button>
-            <Button onClick={handleInsertImage}>Insert</Button>
+            <Button onClick={handleInsertImage} className="bg-purple-600 hover:bg-purple-700">
+              Insert
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -817,7 +934,9 @@ export function MenuBar({
             <Button variant="outline" onClick={() => setTableDialogOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleInsertTable}>Insert</Button>
+            <Button onClick={handleInsertTable} className="bg-orange-600 hover:bg-orange-700">
+              Insert
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

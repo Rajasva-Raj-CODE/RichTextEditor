@@ -135,13 +135,21 @@ export function TextEditor() {
     },
   });
 
+
+// Autosave content on changes
   useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const savedContent = localStorage.getItem(AUTOSAVE_KEY);
-      if (savedContent && editor) {
-        editor.commands.setContent(savedContent);
-      }
-    }
+    if (!editor) return;
+
+    const saveContent = () => {
+      const html = editor.getHTML();
+      localStorage.setItem(AUTOSAVE_KEY, html);
+    };
+
+    editor.on('update', saveContent);
+
+    return () => {
+      editor.off('update', saveContent);
+    };
   }, [editor]);
 
   useEffect(() => {
