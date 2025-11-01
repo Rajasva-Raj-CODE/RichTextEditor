@@ -14,6 +14,7 @@ import {
   AlignJustify,
   List,
   ListOrdered,
+  CheckSquare,
   Link as LinkIcon,
   Image,
   Table,
@@ -33,9 +34,10 @@ import {
   RemoveFormatting,
   ZoomIn,
   ZoomOut,
-  // Added icons for clear color pickers in UI/UX enhancement
   Palette,
   Highlighter,
+  ChevronRight,
+  ChevronLeft,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,19 +52,21 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { useState, useEffect } from "react";
+import { FindReplace } from "./FindReplace";
+import { Search } from "lucide-react";
+import { EmojiPickerMenu } from "./menubar/EmojiPickerMenu";
+import fontFamilyLib from "font-family";
+import { memo,useMemo, useState, useEffect } from "react";
+import { ToolbarButton } from "./menubar/ToolbarButton";
+import { getSystemDefaultStack, FONT_SIZE_OPTIONS, LETTER_SPACING_OPTIONS, LINE_HEIGHT_OPTIONS, getFontFamilyOptions } from "./constants";
+import { HeadingFontGroup } from "./menubar/HeadingFontGroup";
+import { Group as ToolbarGroup } from "./menubar/Group";
+import { TableControls } from "./menubar/TableControls";
+import { FooterStats } from "./menubar/FooterStats";
+import { LinkDialog } from "./dialogs/LinkDialog";
+import { ImageDialog } from "./dialogs/ImageDialog";
+import { TableDialog } from "./dialogs/TableDialog";
 import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
@@ -72,52 +76,9 @@ import {
 } from "@/components/ui/tooltip";
 
 // --- Enhanced Component: ToolbarButton (Retaining all original props and logic) ---
-const ToolbarButton = ({
-  icon: Icon,
-  onClick,
-  isActive = false,
-  disabled = false,
-  tooltip,
-}: {
-  icon: LucideIcon;
-  onClick: () => void;
-  isActive?: boolean;
-  disabled?: boolean;
-  tooltip: string;
-}) => (
-  <TooltipProvider>
-    <Tooltip delayDuration={300}>
-      <TooltipTrigger asChild>
-        <Button
-          variant="ghost" // Use ghost for modern, cleaner look
-          size="icon"
-          onClick={onClick}
-          disabled={disabled}
-          className={`h-8 w-8 transition-colors ${
-            // **UI/UX Enhancement: Use a distinct color for the active state**
-            isActive
-              ? "bg-blue-500 text-white hover:bg-blue-600"
-              : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          }`}
-          aria-label={tooltip}
-          aria-pressed={isActive}
-        >
-          <Icon className="h-4 w-4" />
-        </Button>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{tooltip}</p>
-      </TooltipContent>
-    </Tooltip>
-  </TooltipProvider>
-);
+// ToolbarButton now imported
 
-// --- Enhanced Component: Group (Improved visual separation) ---
-const Group = ({ children }: { children: React.ReactNode }) => (
-  <div className="flex items-center gap-0.5 rounded-md border border-border/70 bg-background/50 p-0.5 shadow-sm">
-    {children}
-  </div>
-);
+// Group moved to menubar/Group
 
 // --- New Component: ColorPickerButton (Better UI for Color Inputs) ---
 const ColorPickerButton = ({
@@ -178,7 +139,7 @@ interface MenuBarProps {
   onZoomChange?: (next: number) => void;
 }
 
-export function MenuBar({
+export const MenuBar = memo(function MenuBar({
   editor,
   onExportPDF,
   onExportWord,
@@ -200,6 +161,28 @@ export function MenuBar({
   const [highlightColor, setHighlightColor] = useState("#ffff00");
   const [activeHeading, setActiveHeading] = useState("paragraph");
   const [activeFontSize, setActiveFontSize] = useState("16px");
+  const [activeFontFamily, setActiveFontFamily] = useState(() => {
+    try {
+      // Use library to compute a sensible system default stack if available
+      const sys = (fontFamilyLib as any)?.toString
+        ? (fontFamilyLib as any).toString()
+        : undefined;
+      return sys && typeof sys === 'string' && sys.length > 0 ? sys : "Inter, system-ui, sans-serif";
+    } catch {
+      return "Inter, system-ui, sans-serif";
+    }
+  });
+  const [activeLetterSpacing, setActiveLetterSpacing] = useState("0");
+  const [activeLineHeight, setActiveLineHeight] = useState("1.5");
+  const [emojiOpen, setEmojiOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+
+  // Compute a system default stack for the font dropdown label/value
+  const systemDefaultStack = useMemo(() => getSystemDefaultStack(), []);
+  const fontSizeOptions = useMemo(() => FONT_SIZE_OPTIONS, []);
+  const fontFamilyOptions = useMemo(() => getFontFamilyOptions(systemDefaultStack), [systemDefaultStack]);
+  const letterSpacingOptions = useMemo(() => LETTER_SPACING_OPTIONS, []);
+  const lineHeightOptions = useMemo(() => LINE_HEIGHT_OPTIONS, []);
 
   // Sync color values with editor state
   useEffect(() => {
@@ -243,9 +226,15 @@ export function MenuBar({
         : "paragraph";
 
       const fontSize = editor.getAttributes("textStyle").fontSize || "16px";
+      const fontFamily = editor.getAttributes("textStyle").fontFamily || "Inter, system-ui, sans-serif";
+      const letterSpacing = editor.getAttributes("textStyle").letterSpacing || "0";
+      const lineHeight = editor.getAttributes("textStyle").lineHeight || "1.5";
 
       setActiveHeading(heading);
       setActiveFontSize(fontSize);
+      setActiveFontFamily(fontFamily);
+      setActiveLetterSpacing(letterSpacing);
+      setActiveLineHeight(lineHeight);
     };
 
     updateSelects();
@@ -350,7 +339,20 @@ export function MenuBar({
   const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      onImportWord(file);
+      if (file.type === 'text/plain') {
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const text = String(event.target?.result || "");
+          const html = `<p>${text
+            .split('\n')
+            .map((line) => line.length ? line.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') : '<br/>')
+            .join('</p><p>')}</p>`;
+          editor.chain().focus().setContent(html).run();
+        };
+        reader.readAsText(file);
+      } else {
+        onImportWord(file);
+      }
     }
   };
   
@@ -378,7 +380,7 @@ export function MenuBar({
           <div className="flex flex-wrap items-center gap-2">
             
             {/* File Actions Group */}
-            <Group>
+            <ToolbarGroup>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   {/* UI/UX Enhancement: Use a friendly color for Export */}
@@ -393,6 +395,20 @@ export function MenuBar({
                   </DropdownMenuItem>
                   <DropdownMenuItem onClick={onExportWord}>
                     Export as Word
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const blob = new Blob([editor.getHTML()], {
+                        type: 'text/html;charset=utf-8',
+                      });
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(blob);
+                      a.download = 'document.html';
+                      a.click();
+                      URL.revokeObjectURL(a.href);
+                    }}
+                  >
+                    Export as HTML
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -409,14 +425,14 @@ export function MenuBar({
               <input
                 id="import-file"
                 type="file"
-                accept=".docx,.html"
+                accept=".docx,.html,.txt"
                 className="hidden"
                 onChange={handleImport}
               />
-            </Group>
+            </ToolbarGroup>
             
             {/* Undo/Redo Group */}
-            <Group>
+            <ToolbarGroup>
               <ToolbarButton
                 icon={Undo}
                 onClick={() => editor.chain().focus().undo().run()}
@@ -429,64 +445,29 @@ export function MenuBar({
                 tooltip="Redo"
                 disabled={!editor.can().redo()}
               />
-            </Group>
+            </ToolbarGroup>
 
             {/* Style/Size Group */}
-            <Group>
-              <Select
-                value={activeHeading}
-                onValueChange={(value) => {
-                  if (value === "paragraph") {
-                    editor.chain().focus().setParagraph().run();
-                  } else {
-                    const level = parseInt(value.replace("h", "")) as
-                      | 1
-                      | 2
-                      | 3
-                      | 4
-                      | 5
-                      | 6;
-                    editor.chain().focus().toggleHeading({ level }).run();
-                  }
-                  setActiveHeading(value);
-                }}
-              >
-                <SelectTrigger className="h-8 w-[120px] text-sm bg-background">
-                  <SelectValue placeholder="Style" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="paragraph">Paragraph</SelectItem>
-                  <SelectItem value="h1">Heading 1</SelectItem>
-                  <SelectItem value="h2">Heading 2</SelectItem>
-                  <SelectItem value="h3">Heading 3</SelectItem>
-                  <SelectItem value="h4">Heading 4</SelectItem>
-                  <SelectItem value="h5">Heading 5</SelectItem>
-                  <SelectItem value="h6">Heading 6</SelectItem>
-                </SelectContent>
-              </Select>
-
-              <Select
-                value={activeFontSize}
-                onValueChange={(value) => {
-                  editor.chain().focus().setFontSize(value).run();
-                  setActiveFontSize(value);
-                }}
-              >
-                <SelectTrigger className="h-8 w-[80px] text-sm bg-background">
-                  <SelectValue placeholder="Size" />
-                </SelectTrigger>
-                <SelectContent>
-                  {["12px", "14px", "16px", "18px", "20px", "24px", "32px"].map((size) => (
-                      <SelectItem key={size} value={size}>
-                          {size.replace('px', '')}
-                      </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Group>
+            <HeadingFontGroup
+              editor={editor}
+              activeHeading={activeHeading}
+              setActiveHeading={setActiveHeading}
+              activeFontSize={activeFontSize}
+              setActiveFontSize={setActiveFontSize}
+              activeFontFamily={activeFontFamily}
+              setActiveFontFamily={setActiveFontFamily}
+              activeLetterSpacing={activeLetterSpacing}
+              setActiveLetterSpacing={setActiveLetterSpacing}
+              activeLineHeight={activeLineHeight}
+              setActiveLineHeight={setActiveLineHeight}
+              fontSizeOptions={fontSizeOptions}
+              fontFamilyOptions={fontFamilyOptions}
+              letterSpacingOptions={letterSpacingOptions}
+              lineHeightOptions={lineHeightOptions}
+            />
 
             {/* Basic Formatting Group */}
-            <Group>
+            <ToolbarGroup>
               <ToolbarButton
                 icon={Bold}
                 onClick={() => editor.chain().focus().toggleBold().run()}
@@ -511,10 +492,10 @@ export function MenuBar({
                 isActive={editor.isActive("strike")}
                 tooltip="Strikethrough"
               />
-            </Group>
+            </ToolbarGroup>
 
             {/* Subscript, Superscript, Color & Clear Formatting Group */}
-            <Group>
+            <ToolbarGroup>
               <ToolbarButton
                 icon={Subscript}
                 onClick={() => editor.chain().focus().toggleSubscript().run()}
@@ -548,10 +529,10 @@ export function MenuBar({
                 }
                 tooltip="Clear Formatting"
               />
-            </Group>
+            </ToolbarGroup>
 
             {/* Alignment Group */}
-            <Group>
+            <ToolbarGroup>
               <ToolbarButton
                 icon={AlignLeft}
                 onClick={() =>
@@ -584,10 +565,10 @@ export function MenuBar({
                 isActive={editor.isActive({ textAlign: "justify" })}
                 tooltip="Justify"
               />
-            </Group>
+            </ToolbarGroup>
 
             {/* List and Block Group */}
-            <Group>
+            <ToolbarGroup>
               <ToolbarButton
                 icon={List}
                 onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -599,6 +580,12 @@ export function MenuBar({
                 onClick={() => editor.chain().focus().toggleOrderedList().run()}
                 isActive={editor.isActive("orderedList")}
                 tooltip="Numbered List"
+              />
+              <ToolbarButton
+                icon={CheckSquare}
+                onClick={() => editor.chain().focus().toggleTaskList().run()}
+                isActive={editor.isActive('taskList')}
+                tooltip="Task List"
               />
               <ToolbarButton
                 icon={Quote}
@@ -617,10 +604,25 @@ export function MenuBar({
                 isActive={editor.isActive("codeBlock")}
                 tooltip="Code Block"
               />
-            </Group>
+              <ToolbarButton
+                icon={ChevronRight}
+                onClick={() => editor.chain().focus().sinkListItem('listItem').run()}
+                tooltip="Indent"
+              />
+              <ToolbarButton
+                icon={ChevronLeft}
+                onClick={() => editor.chain().focus().liftListItem('listItem').run()}
+                tooltip="Outdent"
+              />
+            </ToolbarGroup>
 
             {/* Insert Media Group */}
-            <Group>
+            <ToolbarGroup>
+              <ToolbarButton
+                icon={Search}
+                onClick={() => setFindOpen(true)}
+                tooltip="Find & Replace"
+              />
               <ToolbarButton
                 icon={LinkIcon}
                 onClick={handleLinkClick}
@@ -637,13 +639,15 @@ export function MenuBar({
                 onClick={() => setTableDialogOpen(true)}
                 tooltip="Insert Table"
               />
-            </Group>
+              {/* Emoji Picker */}
+              <EmojiPickerMenu onSelect={(emoji) => editor.chain().focus().insertContent(emoji).run()} />
+            </ToolbarGroup>
           </div>
 
           {/* Right Side Utilities */}
           <div className="ml-auto flex items-center gap-2 flex-shrink-0">
             {onZoomChange ? (
-              <Group>
+              <ToolbarGroup>
                 <ToolbarButton
                   icon={ZoomOut}
                   onClick={() =>
@@ -665,10 +669,10 @@ export function MenuBar({
                   }
                   tooltip="Zoom In"
                 />
-              </Group>
+              </ToolbarGroup>
             ) : null}
 
-            <Group>
+            <ToolbarGroup>
               <ToolbarButton
                 icon={Eye}
                 onClick={onToggleSourceView}
@@ -679,6 +683,33 @@ export function MenuBar({
                 onClick={onToggleTheme}
                 tooltip={isDarkMode ? "Light Mode" : "Dark Mode"}
               />
+              {/* Case transform */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8">Aa</Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  <DropdownMenuItem onClick={() => {
+                    const { from, to } = editor.state.selection;
+                    const text = editor.state.doc.textBetween(from, to, '\n');
+                    if (!text) return;
+                    editor.chain().focus().insertContentAt({ from, to }, text.toUpperCase()).run();
+                  }}>UPPERCASE</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    const { from, to } = editor.state.selection;
+                    const text = editor.state.doc.textBetween(from, to, '\n');
+                    if (!text) return;
+                    editor.chain().focus().insertContentAt({ from, to }, text.toLowerCase()).run();
+                  }}>lowercase</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => {
+                    const { from, to } = editor.state.selection;
+                    const text = editor.state.doc.textBetween(from, to, '\n');
+                    if (!text) return;
+                    const cap = text.replace(/\b(\p{L})(\p{L}*)/gu, (_, a, b) => a.toUpperCase() + String(b).toLowerCase());
+                    editor.chain().focus().insertContentAt({ from, to }, cap).run();
+                  }}>Capitalize Each Word</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
               {/* UI/UX Enhancement: Highlight destructive action in red */}
               <Button
                 variant="default"
@@ -693,253 +724,42 @@ export function MenuBar({
                 <Trash2 className="h-4 w-4 mr-2" />
                 Clear
               </Button>
-            </Group>
+            </ToolbarGroup>
           </div>
         </div>
       </div>
 
-      {/* Table Controls (Original functionality, enhanced colors) */}
-      {editor.isActive("table") && (
-        <div className="flex flex-wrap items-center gap-1 p-2 border-t bg-muted/50 text-sm">
-          <span className="font-semibold text-foreground/80 mr-2">Table:</span>
-          <Group>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => editor.chain().focus().addRowBefore().run()}
-            >
-              Row Before
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => editor.chain().focus().addRowAfter().run()}
-            >
-              Row After
-            </Button>
-            <Button
-              variant="default"
-              className="bg-red-500 hover:bg-red-600 text-white h-7 text-xs"
-              size="sm"
-              onClick={() => editor.chain().focus().deleteRow().run()}
-            >
-              Delete Row
-            </Button>
-          </Group>
-          <Separator orientation="vertical" className="h-6 mx-1" />
-          <Group>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => editor.chain().focus().addColumnBefore().run()}
-            >
-              Col Before
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => editor.chain().focus().addColumnAfter().run()}
-            >
-              Col After
-            </Button>
-            <Button
-              variant="default"
-              className="bg-red-500 hover:bg-red-600 text-white h-7 text-xs"
-              size="sm"
-              onClick={() => editor.chain().focus().deleteColumn().run()}
-            >
-              Delete Col
-            </Button>
-          </Group>
-          <Separator orientation="vertical" className="h-6 mx-1" />
-          <Group>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => editor.chain().focus().mergeCells().run()}
-            >
-              Merge Cells
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              className="h-7 text-xs"
-              onClick={() => editor.chain().focus().splitCell().run()}
-            >
-              Split Cell
-            </Button>
-            <Button
-              variant="default"
-              className="bg-red-700 hover:bg-red-800 text-white h-7 text-xs"
-              size="sm"
-              onClick={() => editor.chain().focus().deleteTable().run()}
-            >
-              Delete Table
-            </Button>
-          </Group>
-        </div>
-      )}
+      <TableControls editor={editor} />
+
+      <FooterStats editor={editor} />
 
       {/* Dialogs (Original functionality, enhanced button colors) */}
-      <Dialog open={linkDialogOpen} onOpenChange={setLinkDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              {editor.isActive("link") ? "Edit Link" : "Insert Link"}
-            </DialogTitle>
-            <DialogDescription>Enter the URL for the link</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="link-url">URL</Label>
-              <Input
-                id="link-url"
-                placeholder="https://example.com"
-                value={linkUrl}
-                onChange={(e) => setLinkUrl(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    handleSetLink();
-                  }
-                }}
-              />
-            </div>
-          </div>
-          <DialogFooter className="sm:justify-between">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setLinkDialogOpen(false);
-                  setLinkUrl("");
-                }}
-              >
-                Cancel
-              </Button>
-              <Button onClick={handleSetLink} className="bg-blue-500 hover:bg-blue-600">
-                {editor.isActive("link") ? "Update" : "Insert"}
-              </Button>
-            </div>
-            {editor.isActive("link") && (
-              <Button
-                variant="default"
-                className="bg-red-500 hover:bg-red-600 text-white"
-                onClick={() => {
-                  editor.chain().focus().unsetLink().run();
-                  setLinkDialogOpen(false);
-                  setLinkUrl("");
-                }}
-              >
-                Remove Link
-              </Button>
-            )}
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={imageDialogOpen} onOpenChange={setImageDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Insert Image</DialogTitle>
-            <DialogDescription>
-              Upload an image or enter a URL
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="image-url">Image URL</Label>
-              <Input
-                id="image-url"
-                placeholder="https://example.com/image.jpg"
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-              />
-            </div>
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-background px-2 text-muted-foreground">
-                  Or
-                </span>
-              </div>
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="image-upload">Upload Image</Label>
-              <Input
-                id="image-upload"
-                type="file"
-                accept="image/*"
-                onChange={handleImageUpload}
-                onClick={(e) => {
-                  // Reset input value to allow selecting the same file again
-                  (e.target as HTMLInputElement).value = "";
-                }}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setImageDialogOpen(false);
-                setImageUrl("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button onClick={handleInsertImage} className="bg-purple-600 hover:bg-purple-700">
-              Insert
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={tableDialogOpen} onOpenChange={setTableDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Insert Table</DialogTitle>
-            <DialogDescription>Choose table dimensions</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="table-rows">Rows</Label>
-              <Input
-                id="table-rows"
-                type="number"
-                min="1"
-                value={tableRows}
-                onChange={(e) => setTableRows(parseInt(e.target.value) || 1)}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="table-cols">Columns</Label>
-              <Input
-                id="table-cols"
-                type="number"
-                min="1"
-                value={tableCols}
-                onChange={(e) => setTableCols(parseInt(e.target.value) || 1)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setTableDialogOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleInsertTable} className="bg-orange-600 hover:bg-orange-700">
-              Insert
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <FindReplace editor={editor} open={findOpen} onOpenChange={setFindOpen} />
+      <LinkDialog
+        open={linkDialogOpen}
+        url={linkUrl}
+        setUrl={setLinkUrl}
+        onClose={() => { setLinkDialogOpen(false); setLinkUrl(""); }}
+        onSubmit={handleSetLink}
+        isEditing={editor.isActive("link")}
+      />
+      <ImageDialog
+        open={imageDialogOpen}
+        url={imageUrl}
+        setUrl={setImageUrl}
+        onClose={() => { setImageDialogOpen(false); setImageUrl(""); }}
+        onUpload={(file) => handleImageUpload({ target: { files: [file] } } as any)}
+        onInsert={handleInsertImage}
+      />
+      <TableDialog
+        open={tableDialogOpen}
+        rows={tableRows}
+        cols={tableCols}
+        setRows={(v) => setTableRows(v)}
+        setCols={(v) => setTableCols(v)}
+        onClose={() => setTableDialogOpen(false)}
+        onInsert={handleInsertTable}
+      />
     </div>
   );
-}
+});

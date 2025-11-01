@@ -1,30 +1,15 @@
 'use client';
 
 import { useEditor, EditorContent } from '@tiptap/react';
-import StarterKit from '@tiptap/starter-kit';
-import TextAlign from '@tiptap/extension-text-align';
-import Link from '@tiptap/extension-link';
-import Image from '@tiptap/extension-image';
-import { Table } from '@tiptap/extension-table';
-import { TableRow } from '@tiptap/extension-table-row';
-import { TableCell } from '@tiptap/extension-table-cell';
-import { TableHeader } from '@tiptap/extension-table-header';
-import Underline from '@tiptap/extension-underline';
-import Subscript from '@tiptap/extension-subscript';
-import Superscript from '@tiptap/extension-superscript';
-import { TextStyle } from '@tiptap/extension-text-style';
-import { Color } from '@tiptap/extension-color';
-import Highlight from '@tiptap/extension-highlight';
-import CharacterCount from '@tiptap/extension-character-count';
 import { Extension } from '@tiptap/core';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect,useState } from 'react';
 import { MenuBar } from './MenuBar';
-import jsPDF from 'jspdf';
-import { saveAs } from 'file-saver';
-import mammoth from 'mammoth';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
+import { useEditorConfig } from './hooks/useEditorConfig';
+import { useAutosave } from './hooks/useAutosave';
+import { exportToPDF as exportPDFUtil, exportToWord as exportWordUtil, importWord as importWordUtil } from './utils/exporters';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const AUTOSAVE_KEY = 'tiptap-editor-content';
 
@@ -77,80 +62,109 @@ const FontSize = Extension.create({
   },
 });
 
+// Custom TextStyle attributes for font family, letter spacing, and line height
+const FontFamily = Extension.create({
+  name: 'fontFamily',
+  addOptions() {
+    return { types: ['textStyle'] };
+  },
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          fontFamily: {
+            default: null,
+            parseHTML: (element) => element.style.fontFamily || null,
+            renderHTML: (attrs) => (attrs.fontFamily ? { style: `font-family: ${attrs.fontFamily}` } : {}),
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setFontFamily:
+        (fontFamily: string) =>
+        ({ chain }: any) => chain().setMark('textStyle', { fontFamily }).run(),
+    } as any;
+  },
+});
+
+const LetterSpacing = Extension.create({
+  name: 'letterSpacing',
+  addOptions() {
+    return { types: ['textStyle'] };
+  },
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          letterSpacing: {
+            default: null,
+            parseHTML: (element) => element.style.letterSpacing || null,
+            renderHTML: (attrs) => (attrs.letterSpacing ? { style: `letter-spacing: ${attrs.letterSpacing}` } : {}),
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setLetterSpacing:
+        (letterSpacing: string) =>
+        ({ chain }: any) => chain().setMark('textStyle', { letterSpacing }).run(),
+    } as any;
+  },
+});
+
+const LineHeight = Extension.create({
+  name: 'lineHeight',
+  addOptions() {
+    return { types: ['textStyle'] };
+  },
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          lineHeight: {
+            default: null,
+            parseHTML: (element) => element.style.lineHeight || null,
+            renderHTML: (attrs) => (attrs.lineHeight ? { style: `line-height: ${attrs.lineHeight}` } : {}),
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setLineHeight:
+        (lineHeight: string) =>
+        ({ chain }: any) => chain().setMark('textStyle', { lineHeight }).run(),
+    } as any;
+  },
+});
+
 export function TextEditor() {
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [sourceViewOpen, setSourceViewOpen] = useState(false);
   const [sourceCode, setSourceCode] = useState('');
   const [zoom, setZoom] = useState(1);
 
+  const { extensions, editorProps } = useEditorConfig();
+
   const editor = useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: {
-          levels: [1, 2, 3, 4, 5, 6],
-        },
-      }),
-      TextAlign.configure({
-        types: ['heading', 'paragraph', 'blockquote', 'codeBlock', 'bulletList', 'orderedList', 'listItem',],
-      }),
-      Link.configure({
-        openOnClick: false,
-        autolink: true,
-        linkOnPaste: true,
-        defaultProtocol: 'https',
-        HTMLAttributes: {
-          rel: 'noopener noreferrer nofollow',
-          target: '_blank',
-        },
-        validate: href => /^(https?:\/\/|mailto:|tel:)/i.test(href),
-      }),
-      Image.configure({
-        inline: true,
-      }),
-      Table.configure({
-        resizable: true,
-      }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      Underline,
-      Subscript,
-      Superscript,
-      TextStyle,
-      Color,
-      FontSize,
-      Highlight.configure({
-        multicolor: true,
-      }),
-      CharacterCount,
-    ],
+    extensions,
     content: '',
     // Prevent SSR hydration mismatches in Next.js by delaying initial render until mounted
     immediatelyRender: false,
-    editorProps: {
-      attributes: {
-        class:
-          'prose prose-sm sm:prose lg:prose-lg xl:prose-xl max-w-none focus:outline-none min-h-[900px] p-12',
-      },
-    },
+    editorProps,
   });
 
 
-// Autosave content on changes
-  useEffect(() => {
-    if (!editor) return;
-
-    const saveContent = () => {
-      const html = editor.getHTML();
-      localStorage.setItem(AUTOSAVE_KEY, html);
-    };
-
-    editor.on('update', saveContent);
-
-    return () => {
-      editor.off('update', saveContent);
-    };
-  }, [editor]);
+  useAutosave(editor, AUTOSAVE_KEY, 500);
 
   useEffect(() => {
     if (isDarkMode) {
@@ -160,87 +174,36 @@ export function TextEditor() {
     }
   }, [isDarkMode]);
 
-  const exportToPDF = () => {
-    if (!editor) return;
+  const exportToPDF = useCallback(async () => {
+    await exportPDFUtil(editor);
+  }, [editor]);
 
-    const content = editor.getHTML();
-    const tempDiv = document.createElement('div');
-    tempDiv.innerHTML = content;
-    tempDiv.style.width = '210mm';
-    tempDiv.style.padding = '20mm';
-    tempDiv.style.fontFamily = 'Arial, sans-serif';
-    document.body.appendChild(tempDiv);
+  const exportToWord = useCallback(async () => {
+    await exportWordUtil(editor);
+  }, [editor]);
 
-    const pdf = new jsPDF('p', 'mm', 'a4');
-    const pageHeight = pdf.internal.pageSize.getHeight();
-    const pageWidth = pdf.internal.pageSize.getWidth();
-
-    const text = tempDiv.innerText;
-    const lines = pdf.splitTextToSize(text, pageWidth - 40);
-
-    let cursorY = 20;
-    lines.forEach((line: string) => {
-      if (cursorY > pageHeight - 20) {
-        pdf.addPage();
-        cursorY = 20;
-      }
-      pdf.text(line, 20, cursorY);
-      cursorY += 7;
-    });
-
-    document.body.removeChild(tempDiv);
-    pdf.save('document.pdf');
-  };
-
-  const exportToWord = () => {
-    if (!editor) return;
-
-    const content = editor.getHTML();
-    const htmlContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="utf-8">
-          <title>Document</title>
-        </head>
-        <body>
-          ${content}
-        </body>
-      </html>
-    `;
-
-    const blob = new Blob([htmlContent], {
-      type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    });
-    saveAs(blob, 'document.docx');
-  };
-
-  const importWord = async (file: File) => {
-    if (!editor) return;
-
+  const importWord = useCallback(async (file: File) => {
     try {
-      const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.convertToHtml({ arrayBuffer });
-      editor.commands.setContent(result.value);
+      await importWordUtil(editor, file);
     } catch (error) {
       console.error('Error importing file:', error);
       alert('Error importing file. Please try again.');
     }
-  };
+  }, [editor]);
 
-  const toggleSourceView = () => {
+  const toggleSourceView = useCallback(() => {
     if (!sourceViewOpen && editor) {
       setSourceCode(editor.getHTML());
     }
     setSourceViewOpen(!sourceViewOpen);
-  };
+  }, [editor, sourceViewOpen]);
 
-  const applySourceCode = () => {
+  const applySourceCode = useCallback(() => {
     if (editor) {
       editor.commands.setContent(sourceCode);
     }
     setSourceViewOpen(false);
-  };
+  }, [editor, sourceCode]);
 
 
   return (
@@ -251,15 +214,15 @@ export function TextEditor() {
         onExportWord={exportToWord}
         onImportWord={importWord}
         onToggleSourceView={toggleSourceView}
-        onToggleTheme={() => setIsDarkMode(!isDarkMode)}
+        onToggleTheme={useCallback(() => setIsDarkMode(!isDarkMode), [isDarkMode])}
         isDarkMode={isDarkMode}
         zoom={zoom}
-        onZoomChange={(z) => setZoom(z)}
+        onZoomChange={useCallback((z: number) => setZoom(z), [])}
       />
 
       <div className="flex-1 overflow-auto bg-muted/30">
         <div className="editor-grid">
-          <div className="max-w-5xl mx-auto px-6 py-8">
+          <div className="max-w-7xl mx-auto px-2 py-8">
             <div className="flex justify-center">
               <div
                 className="paper bg-white dark:bg-white shadow-xl ring-1 ring-black/5 rounded-lg overflow-hidden"
