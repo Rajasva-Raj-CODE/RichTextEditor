@@ -1,5 +1,14 @@
 import { Extension } from '@tiptap/core';
 
+interface CommandProps {
+  chain: () => {
+    setMark: (name: string, attrs: Record<string, unknown>) => {
+      removeEmptyTextStyle?: () => { run: () => boolean };
+      run: () => boolean;
+    };
+  };
+}
+
 export const FontSize = Extension.create({
   name: 'fontSize',
   addOptions() {
@@ -23,11 +32,14 @@ export const FontSize = Extension.create({
     return {
       setFontSize:
         (fontSize: string) =>
-        ({ chain }) => chain().setMark('textStyle', { fontSize }).run(),
+        ({ chain }: CommandProps) => chain().setMark('textStyle', { fontSize }).run(),
       unsetFontSize:
         () =>
-        ({ chain }) => chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run(),
-    } as any;
+        ({ chain }: CommandProps) => {
+          const result = chain().setMark('textStyle', { fontSize: null });
+          return result.removeEmptyTextStyle ? result.removeEmptyTextStyle().run() : result.run();
+        },
+    } as Record<string, unknown>;
   },
 });
 
@@ -54,8 +66,8 @@ export const FontFamily = Extension.create({
     return {
       setFontFamily:
         (fontFamily: string) =>
-        ({ chain }: any) => chain().setMark('textStyle', { fontFamily }).run(),
-    } as any;
+        ({ chain }: CommandProps) => chain().setMark('textStyle', { fontFamily }).run(),
+    } as Record<string, unknown>;
   },
 });
 
@@ -82,8 +94,8 @@ export const LetterSpacing = Extension.create({
     return {
       setLetterSpacing:
         (letterSpacing: string) =>
-        ({ chain }: any) => chain().setMark('textStyle', { letterSpacing }).run(),
-    } as any;
+        ({ chain }: CommandProps) => chain().setMark('textStyle', { letterSpacing }).run(),
+    } as Record<string, unknown>;
   },
 });
 
@@ -110,8 +122,8 @@ export const LineHeight = Extension.create({
     return {
       setLineHeight:
         (lineHeight: string) =>
-        ({ chain }: any) => chain().setMark('textStyle', { lineHeight }).run(),
-    } as any;
+        ({ chain }: CommandProps) => chain().setMark('textStyle', { lineHeight }).run(),
+    } as Record<string, unknown>;
   },
 });
 

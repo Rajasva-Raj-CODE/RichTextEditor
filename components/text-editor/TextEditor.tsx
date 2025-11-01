@@ -1,8 +1,7 @@
 'use client';
 
 import { useEditor, EditorContent } from '@tiptap/react';
-import { Extension } from '@tiptap/core';
-import { useCallback, useEffect,useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { MenuBar } from './MenuBar';
 import { Textarea } from '@/components/ui/textarea';
 import { Button } from '@/components/ui/button';
@@ -12,140 +11,6 @@ import { exportToPDF as exportPDFUtil, exportToWord as exportWordUtil, importWor
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 
 const AUTOSAVE_KEY = 'tiptap-editor-content';
-
-
-// Custom FontSize extension
-const FontSize = Extension.create({
-  name: 'fontSize',
-
-  addOptions() {
-    return {
-      types: ['textStyle'],
-    };
-  },
-
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          fontSize: {
-            default: null,
-            parseHTML: (element) => element.style.fontSize || null,
-            renderHTML: (attributes) => {
-              if (!attributes.fontSize) {
-                return {};
-              }
-              return {
-                style: `font-size: ${attributes.fontSize}`,
-              };
-            },
-          },
-        },
-      },
-    ];
-  },
-
-  addCommands() {
-    return {
-      setFontSize:
-        (fontSize: string) =>
-        ({ chain }) => {
-          return chain().setMark('textStyle', { fontSize }).run();
-        },
-      unsetFontSize:
-        () =>
-        ({ chain }) => {
-          return chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run();
-        },
-    };
-  },
-});
-
-// Custom TextStyle attributes for font family, letter spacing, and line height
-const FontFamily = Extension.create({
-  name: 'fontFamily',
-  addOptions() {
-    return { types: ['textStyle'] };
-  },
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          fontFamily: {
-            default: null,
-            parseHTML: (element) => element.style.fontFamily || null,
-            renderHTML: (attrs) => (attrs.fontFamily ? { style: `font-family: ${attrs.fontFamily}` } : {}),
-          },
-        },
-      },
-    ];
-  },
-  addCommands() {
-    return {
-      setFontFamily:
-        (fontFamily: string) =>
-        ({ chain }: any) => chain().setMark('textStyle', { fontFamily }).run(),
-    } as any;
-  },
-});
-
-const LetterSpacing = Extension.create({
-  name: 'letterSpacing',
-  addOptions() {
-    return { types: ['textStyle'] };
-  },
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          letterSpacing: {
-            default: null,
-            parseHTML: (element) => element.style.letterSpacing || null,
-            renderHTML: (attrs) => (attrs.letterSpacing ? { style: `letter-spacing: ${attrs.letterSpacing}` } : {}),
-          },
-        },
-      },
-    ];
-  },
-  addCommands() {
-    return {
-      setLetterSpacing:
-        (letterSpacing: string) =>
-        ({ chain }: any) => chain().setMark('textStyle', { letterSpacing }).run(),
-    } as any;
-  },
-});
-
-const LineHeight = Extension.create({
-  name: 'lineHeight',
-  addOptions() {
-    return { types: ['textStyle'] };
-  },
-  addGlobalAttributes() {
-    return [
-      {
-        types: this.options.types,
-        attributes: {
-          lineHeight: {
-            default: null,
-            parseHTML: (element) => element.style.lineHeight || null,
-            renderHTML: (attrs) => (attrs.lineHeight ? { style: `line-height: ${attrs.lineHeight}` } : {}),
-          },
-        },
-      },
-    ];
-  },
-  addCommands() {
-    return {
-      setLineHeight:
-        (lineHeight: string) =>
-        ({ chain }: any) => chain().setMark('textStyle', { lineHeight }).run(),
-    } as any;
-  },
-});
 
 export function TextEditor() {
   const [isDarkMode, setIsDarkMode] = useState(false);
@@ -163,6 +28,15 @@ export function TextEditor() {
     editorProps,
   });
 
+  // Restore autosaved content on mount
+  useEffect(() => {
+    if (!editor) return;
+    
+    const savedContent = localStorage.getItem(AUTOSAVE_KEY);
+    if (savedContent && savedContent !== '<p></p>') {
+      editor.commands.setContent(savedContent);
+    }
+  }, [editor]);
 
   useAutosave(editor, AUTOSAVE_KEY, 500);
 

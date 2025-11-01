@@ -6,6 +6,7 @@ import type { EmojiClickData } from 'emoji-picker-react';
 import { Button } from '@/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const EmojiPicker = dynamic<any>(() => import('emoji-picker-react'), { ssr: false });
 
 export function EmojiPickerMenu({

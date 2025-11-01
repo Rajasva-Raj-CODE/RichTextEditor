@@ -2,7 +2,8 @@ import fontFamilyLib from 'font-family';
 
 export function getSystemDefaultStack() {
   try {
-    const sys = (fontFamilyLib as any)?.toString ? (fontFamilyLib as any).toString() : undefined;
+    const fontFamilyLibTyped = fontFamilyLib as { toString?: () => string };
+    const sys = fontFamilyLibTyped?.toString ? fontFamilyLibTyped.toString() : undefined;
     return sys && typeof sys === 'string' && sys.length > 0
       ? sys
       : 'system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif';

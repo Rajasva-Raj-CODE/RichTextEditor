@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 declare module '@tiptap/extension-task-list' {
   const TaskList: any;
   export default TaskList;

@@ -41,13 +41,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -67,7 +60,6 @@ import { FooterStats } from "./menubar/FooterStats";
 import { LinkDialog } from "./dialogs/LinkDialog";
 import { ImageDialog } from "./dialogs/ImageDialog";
 import { TableDialog } from "./dialogs/TableDialog";
-import { Separator } from "@/components/ui/separator";
 import {
   Tooltip,
   TooltipContent,
@@ -75,12 +67,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-// --- Enhanced Component: ToolbarButton (Retaining all original props and logic) ---
-// ToolbarButton now imported
 
-// Group moved to menubar/Group
-
-// --- New Component: ColorPickerButton (Better UI for Color Inputs) ---
 const ColorPickerButton = ({
   icon: Icon,
   value,
@@ -164,8 +151,9 @@ export const MenuBar = memo(function MenuBar({
   const [activeFontFamily, setActiveFontFamily] = useState(() => {
     try {
       // Use library to compute a sensible system default stack if available
-      const sys = (fontFamilyLib as any)?.toString
-        ? (fontFamilyLib as any).toString()
+      const fontFamilyLibTyped = fontFamilyLib as { toString?: () => string };
+      const sys = fontFamilyLibTyped?.toString
+        ? fontFamilyLibTyped.toString()
         : undefined;
       return sys && typeof sys === 'string' && sys.length > 0 ? sys : "Inter, system-ui, sans-serif";
     } catch {
@@ -174,7 +162,6 @@ export const MenuBar = memo(function MenuBar({
   });
   const [activeLetterSpacing, setActiveLetterSpacing] = useState("0");
   const [activeLineHeight, setActiveLineHeight] = useState("1.5");
-  const [emojiOpen, setEmojiOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
 
   // Compute a system default stack for the font dropdown label/value
@@ -650,24 +637,26 @@ export const MenuBar = memo(function MenuBar({
               <ToolbarGroup>
                 <ToolbarButton
                   icon={ZoomOut}
-                  onClick={() =>
-                    onZoomChange(
-                      Math.max(0.5, Math.round(((zoom || 1) - 0.1) * 10) / 10)
-                    )
-                  }
+                  onClick={() => {
+                    const currentZoom = zoom || 1;
+                    const newZoom = Math.max(0.5, Math.round((currentZoom - 0.1) * 100) / 100);
+                    onZoomChange(newZoom);
+                  }}
                   tooltip="Zoom Out"
+                  disabled={(!zoom || zoom <= 0.5)}
                 />
                 <div className="px-2 text-xs tabular-nums text-foreground/80 w-[50px] text-center font-medium">
                   {Math.round((zoom || 1) * 100)}%
                 </div>
                 <ToolbarButton
                   icon={ZoomIn}
-                  onClick={() =>
-                    onZoomChange(
-                      Math.min(2, Math.round(((zoom || 1) + 0.1) * 10) / 10)
-                    )
-                  }
+                  onClick={() => {
+                    const currentZoom = zoom || 1;
+                    const newZoom = Math.min(2, Math.round((currentZoom + 0.1) * 100) / 100);
+                    onZoomChange(newZoom);
+                  }}
                   tooltip="Zoom In"
+                  disabled={(!zoom || zoom >= 2)}
                 />
               </ToolbarGroup>
             ) : null}
@@ -716,10 +705,15 @@ export const MenuBar = memo(function MenuBar({
                 className="bg-red-500 hover:bg-red-600 text-white h-8 ml-1"
                 size="sm"
                 onClick={() => {
-                  if (confirm("Clear all content?")) {
+                  if (window.confirm("Clear all content? This action cannot be undone.")) {
                     editor.chain().focus().clearContent().run();
+                    // Also clear autosaved content
+                    if (typeof window !== 'undefined' && window.localStorage) {
+                      localStorage.removeItem('tiptap-editor-content');
+                    }
                   }
                 }}
+                disabled={!editor || editor.isEmpty}
               >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Clear
@@ -748,7 +742,12 @@ export const MenuBar = memo(function MenuBar({
         url={imageUrl}
         setUrl={setImageUrl}
         onClose={() => { setImageDialogOpen(false); setImageUrl(""); }}
-        onUpload={(file) => handleImageUpload({ target: { files: [file] } } as any)}
+        onUpload={(file) => {
+          const mockEvent = {
+            target: { files: [file] }
+          } as unknown as React.ChangeEvent<HTMLInputElement>;
+          handleImageUpload(mockEvent);
+        }}
         onInsert={handleInsertImage}
       />
       <TableDialog

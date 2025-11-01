@@ -85,7 +85,7 @@ export function HeadingFontGroup({
       <Select
         value={activeFontFamily}
         onValueChange={(value) => {
-          (editor.chain() as any).focus().setFontFamily(value).run();
+          (editor.chain().focus() as unknown as { setFontFamily: (val: string) => { run: () => boolean } }).setFontFamily(value).run();
           setActiveFontFamily(value);
         }}
       >
@@ -102,7 +102,7 @@ export function HeadingFontGroup({
       <Select
         value={activeLetterSpacing}
         onValueChange={(value) => {
-          (editor.chain() as any).focus().setLetterSpacing(value).run();
+          (editor.chain().focus() as unknown as { setLetterSpacing: (val: string) => { run: () => boolean } }).setLetterSpacing(value).run();
           setActiveLetterSpacing(value);
         }}
       >
@@ -119,7 +119,7 @@ export function HeadingFontGroup({
       <Select
         value={activeLineHeight}
         onValueChange={(value) => {
-          (editor.chain() as any).focus().setLineHeight(value).run();
+          (editor.chain().focus() as unknown as { setLineHeight: (val: string) => { run: () => boolean } }).setLineHeight(value).run();
           setActiveLineHeight(value);
         }}
       >
